@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  # Frontend (Vite + React)
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://backend:3001
+      - VITE_AI_SERVICE_URL=http://ai-service:5001
+    depends_on:
+      - backend
+      - ai-service
+    networks:
+      - smart-hub-network
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - AI_SERVICE_URL=http://ai-service:5001
+      - ZOHO_API_URL=http://zoho-mock:5002
+      - ZOHO_API_KEY=zoho-test-key-2024
+    depends_on:
+      - ai-service
+      - zoho-mock
+    volumes:
+      - ./backend/database:/app/database
+    networks:
+      - smart-hub-network
+
+  # AI Microservice
+  ai-service:
+    build:
+      context: ./ai-microservice
+      dockerfile: Dockerfile
+    ports:
+      - "5001:5001"
+    environment:
+      - FLASK_ENV=production
+      - PORT=5001
+    networks:
+      - smart-hub-network
+
+  # Zoho Creator Mock API
+  zoho-mock:
+    build:
+      context: ./zoho-mock
+      dockerfile: Dockerfile
+    ports:
+      - "5002:5002"
+    environment:
+      - NODE_ENV=production
+      - PORT=5002
+      - ZOHO_API_KEY=zoho-test-key-2024
+    networks:
+      - smart-hub-network
+
+networks:
+  smart-hub-network:
+    driver: bridge
+
+volumes:
+  database-data:
