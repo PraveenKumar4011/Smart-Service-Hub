@@ -35,11 +35,12 @@ const corsOptions = {
       return callback(null, true);
     }
     
-    // In production, you would check against allowed origins
+    // In production, check against allowed origins
     const allowedOrigins = [
       'http://localhost:5173',  // Vite default dev server
       'http://localhost:3000',  // Common React dev server
-      'http://localhost:4173'   // Vite preview server
+      'http://localhost:4173',  // Vite preview server
+      'https://meticulous-cooperation-production-af7e.up.railway.app', // Railway frontend
     ];
     
     if (allowedOrigins.includes(origin)) {
