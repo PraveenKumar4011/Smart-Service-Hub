@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: smart-hub-backend
+    runtime: node
+    plan: free
+    rootDir: ./backend
+    buildCommand: npm ci
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_FILE
+        value: ./src/database/tickets.db
+      - key: ZOHOCREATOR_URL
+        value: https://creator.zoho.in/api/v2.1/pk.08497121/smart-service-hub/form/Service_Hub_Form
+      - key: ZOHOCREATOR_API_KEY
+        value: 1000.81006e907b0a2b65537a81521f5bae5e.3074d7db83d14d4c52a11d646d7754e6
