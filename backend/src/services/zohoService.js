@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { config } from '../config/index.js';
+import zohoOAuthService from './zohoOAuthService.js';
 
 class ZohoService {
   constructor() {
@@ -15,28 +16,37 @@ class ZohoService {
     }
 
     try {
-      // Prepare payload for Zoho Creator (flat structure, no nested data object)
+      // Prepare payload for Zoho Creator v2.1 API (requires 'data' wrapper)
+      // Split name into first and last name
+      const nameParts = ticketData.name.split(' ');
+      const firstName = nameParts[0] || ticketData.name;
+      const lastName = nameParts.slice(1).join(' ') || '';
+      
       const zohoPayload = {
-        Name: ticketData.name,
-        Email: ticketData.email,
-        Request_Type: ticketData.requestType,
-        Description: ticketData.description,
-        Category: ticketData.category || ticketData.requestType,
-        Priority: ticketData.priority || 'Medium',
-        AI_Summary: ticketData.summary || `${ticketData.requestType} request from ${ticketData.name}`,
-        AI_Entities: ticketData.entities ? JSON.stringify(ticketData.entities) : null
+        data: {
+          Name: {
+            first_name: firstName,
+            last_name: lastName
+          },
+          Email: ticketData.email,
+          Request_Type: ticketData.requestType,
+          Description: ticketData.description,
+          Category: ticketData.category || ticketData.requestType,
+          Priority: ticketData.priority || 'Medium',
+          Summary: ticketData.summary || `${ticketData.requestType} request from ${ticketData.name}`,
+          Entities: ticketData.entities ? JSON.stringify(ticketData.entities) : null
+        }
       };
 
       console.log(`Sending ticket to Zoho Creator at ${this.url}`);
       console.log('Payload:', JSON.stringify(zohoPayload, null, 2));
       
-      const response = await axios.post(this.url, zohoPayload, {
-        timeout: this.timeout,
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': this.apiKey
-        }
-      });
+      // Use OAuth service for automatic token refresh
+      const response = await zohoOAuthService.makeAuthenticatedRequest(
+        this.url,
+        'POST',
+        zohoPayload
+      );
 
       console.log('Zoho response:', response.status, response.data);
 

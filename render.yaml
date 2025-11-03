@@ -16,4 +16,10 @@ services:
       - key: ZOHOCREATOR_URL
         value: https://creator.zoho.in/api/v2.1/pk.08497121/smart-service-hub/form/Service_Hub_Form
       - key: ZOHOCREATOR_API_KEY
-        value: 1000.25c23c1211c1a24d7ec02858086bd71a.b46f3786f76e8d09463db76471258ecc
+        value: 1000.e22e6fec37b5346c260e2609923ae8cb.95cc652d3538f9605df19dfa6691c42d
+      - key: ZOHO_CLIENT_ID
+        value: 1000.DC6KPBUK80K8EEGL4C4J4L00KM60GF
+      - key: ZOHO_CLIENT_SECRET
+        value: 09d4caed45638363103b3b0726f8e6bd24c0d4e0a4
+      - key: ZOHO_REFRESH_TOKEN
+        value: 1000.e782c84b72155b8d3f525c45d387122c.dcd178f681a2ca9d33f633ff9371a06c
