@@ -15,26 +15,30 @@ class ZohoService {
     }
 
     try {
-      // Prepare payload for Zoho Creator (flat structure, no nested data object)
+      // Prepare simplified payload for Zoho Creator
       const zohoPayload = {
-        Name: ticketData.name,
-        Email: ticketData.email,
-        Request_Type: ticketData.requestType,
-        Description: ticketData.description,
-        Category: ticketData.category || ticketData.requestType,
-        Priority: ticketData.priority || 'Medium',
-        AI_Summary: ticketData.summary || `${ticketData.requestType} request from ${ticketData.name}`,
-        AI_Entities: ticketData.entities ? JSON.stringify(ticketData.entities) : null
+        data: {
+          Name: {
+            first_name: ticketData.name.split(' ')[0] || ticketData.name,
+            last_name: ticketData.name.split(' ').slice(1).join(' ') || ''
+          },
+          Email: ticketData.email,
+          Request_Type: ticketData.requestType,
+          Description: ticketData.description,
+          Category: ticketData.category || ticketData.requestType,
+          Priority: ticketData.priority || 'Medium',
+          Summary: ticketData.summary || `${ticketData.requestType} request from ${ticketData.name}`,
+          Status: 'Open'
+        }
       };
 
       console.log(`Sending ticket to Zoho Creator at ${this.url}`);
-      console.log('Payload:', JSON.stringify(zohoPayload, null, 2));
       
       const response = await axios.post(this.url, zohoPayload, {
         timeout: this.timeout,
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': this.apiKey
+          'Authorization': `Zoho-oauthtoken ${this.apiKey}`
         }
       });
 
@@ -42,7 +46,7 @@ class ZohoService {
 
       return {
         success: true,
-        zohoId: response.data?.data?.ID || response.data?.ID || response.data?.id,
+        zohoId: response.data?.id || response.data?.data?.ID,
         response: response.data
       };
 

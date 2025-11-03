@@ -1,0 +1,20 @@
+# Ignore frontend build files
+dist/
+build/
+public/
+src/components/
+src/assets/
+index.html
+vite.config.js
+tailwind.config.js
+postcss.config.js
+
+# Ignore other service directories
+../ai-microservice/
+../zoho-mock/
+../frontend/
+
+# Node modules and logs
+node_modules/
+*.log
+.env.local

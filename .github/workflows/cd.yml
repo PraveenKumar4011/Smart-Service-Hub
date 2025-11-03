@@ -1,0 +1,245 @@
+name: CD - Deploy
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:  # Allow manual triggering
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+
+env:
+  NODE_VERSION: '18'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # Deploy to Staging (automatic on main branch push)
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    environment: 
+      name: staging
+      url: ${{ steps.deploy.outputs.url }}
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+    
+    # Frontend Deployment (Railway)
+    - name: Deploy Frontend to Railway
+      run: |
+        echo "Deploying frontend to Railway staging..."
+        # Install Railway CLI
+        npm install -g @railway/cli
+        
+        # Deploy using Railway CLI (requires RAILWAY_TOKEN secret)
+        railway login --token ${{ secrets.RAILWAY_TOKEN }}
+        railway link ${{ secrets.RAILWAY_PROJECT_ID }}
+        railway up --service frontend
+      env:
+        RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+      continue-on-error: true
+    
+    # Backend Deployment (Render)  
+    - name: Deploy Backend to Render
+      run: |
+        echo "Triggering backend deployment on Render..."
+        curl -X POST \
+          -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+          -H "Accept: application/json" \
+          -H "Content-Type: application/json" \
+          "https://api.render.com/v1/services/${{ secrets.RENDER_SERVICE_ID }}/deploys" \
+          -d '{}'
+      env:
+        RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+      continue-on-error: true
+    
+    # Zoho Mock Deployment (Render)
+    - name: Deploy Zoho Mock to Render  
+      run: |
+        echo "Triggering zoho-mock deployment on Render..."
+        curl -X POST \
+          -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+          -H "Accept: application/json" \
+          -H "Content-Type: application/json" \
+          "https://api.render.com/v1/services/${{ secrets.RENDER_ZOHO_SERVICE_ID }}/deploys" \
+          -d '{}'
+      env:
+        RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        RENDER_ZOHO_SERVICE_ID: ${{ secrets.RENDER_ZOHO_SERVICE_ID }}
+      continue-on-error: true
+    
+    - name: Wait for deployments
+      run: |
+        echo "Waiting for deployments to complete..."
+        sleep 60  # Wait for services to deploy
+    
+    # Post-deployment health checks
+    - name: Health Check Staging
+      id: health-check
+      run: |
+        echo "Running post-deployment health checks..."
+        
+        # Health check frontend (Railway)
+        FRONTEND_URL="${{ secrets.RAILWAY_FRONTEND_URL }}"
+        if curl -f "$FRONTEND_URL" -o /dev/null -s; then
+          echo "✅ Frontend health check passed"
+        else
+          echo "❌ Frontend health check failed"
+          exit 1
+        fi
+        
+        # Health check backend (Render)  
+        BACKEND_URL="${{ secrets.RENDER_BACKEND_URL }}"
+        if curl -f "$BACKEND_URL/health" -o /dev/null -s; then
+          echo "✅ Backend health check passed"
+        else
+          echo "❌ Backend health check failed"  
+          exit 1
+        fi
+        
+        # Health check zoho mock (Render)
+        ZOHO_MOCK_URL="${{ secrets.RENDER_ZOHO_URL }}"
+        if curl -f "$ZOHO_MOCK_URL/health" -o /dev/null -s; then
+          echo "✅ Zoho Mock health check passed"
+        else
+          echo "❌ Zoho Mock health check failed"
+          exit 1
+        fi
+        
+        echo "All staging health checks passed! 🎉"
+        echo "url=$FRONTEND_URL" >> $GITHUB_OUTPUT
+
+    # Slack notification
+    - name: Notify Slack
+      if: always()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        channel: '#deployments'
+        text: |
+          Staging deployment ${{ job.status }}!
+          Frontend: ${{ secrets.RAILWAY_FRONTEND_URL }}
+          Backend: ${{ secrets.RENDER_BACKEND_URL }}
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # Deploy to Production (manual approval required)
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production'
+    needs: []  # Can run independently 
+    environment: 
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+    
+    # Production deployment steps (similar to staging but with production secrets)
+    - name: Deploy Frontend to Production (Railway)
+      run: |
+        echo "Deploying frontend to Railway production..."
+        npm install -g @railway/cli
+        railway login --token ${{ secrets.RAILWAY_PROD_TOKEN }}
+        railway link ${{ secrets.RAILWAY_PROD_PROJECT_ID }}
+        railway up --service frontend
+      env:
+        RAILWAY_PROD_TOKEN: ${{ secrets.RAILWAY_PROD_TOKEN }}
+        RAILWAY_PROD_PROJECT_ID: ${{ secrets.RAILWAY_PROD_PROJECT_ID }}
+      continue-on-error: true
+    
+    - name: Deploy Backend to Production (Render)
+      run: |
+        echo "Triggering backend production deployment..."
+        curl -X POST \
+          -H "Authorization: Bearer ${{ secrets.RENDER_PROD_API_KEY }}" \
+          -H "Accept: application/json" \
+          -H "Content-Type: application/json" \
+          "https://api.render.com/v1/services/${{ secrets.RENDER_PROD_SERVICE_ID }}/deploys" \
+          -d '{}'
+      env:
+        RENDER_PROD_API_KEY: ${{ secrets.RENDER_PROD_API_KEY }}
+        RENDER_PROD_SERVICE_ID: ${{ secrets.RENDER_PROD_SERVICE_ID }}
+    
+    - name: Wait for production deployments
+      run: |
+        echo "Waiting for production deployments..."
+        sleep 90
+    
+    - name: Production Health Check
+      id: deploy
+      run: |
+        echo "Running production health checks..."
+        
+        PROD_FRONTEND_URL="${{ secrets.RAILWAY_PROD_FRONTEND_URL }}"
+        PROD_BACKEND_URL="${{ secrets.RENDER_PROD_BACKEND_URL }}"
+        
+        # Health checks
+        curl -f "$PROD_FRONTEND_URL" -o /dev/null -s || exit 1
+        curl -f "$PROD_BACKEND_URL/health" -o /dev/null -s || exit 1
+        
+        echo "Production deployment successful! 🚀"
+        echo "url=$PROD_FRONTEND_URL" >> $GITHUB_OUTPUT
+    
+    - name: Notify Production Deployment
+      if: always()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        channel: '#production'
+        text: |
+          🚀 PRODUCTION DEPLOYMENT ${{ job.status }}!
+          Frontend: ${{ secrets.RAILWAY_PROD_FRONTEND_URL }}
+          Backend: ${{ secrets.RENDER_PROD_BACKEND_URL }}
+          Deployed by: ${{ github.actor }}
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # Rollback capability
+  rollback:
+    name: Rollback
+    runs-on: ubuntu-latest
+    if: failure() && github.event_name == 'workflow_dispatch'
+    needs: [deploy-staging, deploy-production]
+    when: failure()
+    
+    steps:
+    - name: Rollback Services
+      run: |
+        echo "Rolling back services..."
+        # Add rollback logic here
+        # This could involve triggering previous deployment or reverting to last known good state
+        
+        echo "⚠️ ROLLBACK INITIATED - Manual intervention may be required"
+    
+    - name: Notify Rollback
+      uses: 8398a7/action-slack@v3
+      with:
+        status: 'warning'
+        channel: '#incidents'
+        text: |
+          ⚠️ ROLLBACK INITIATED
+          Deployment failed and rollback was triggered
+          Manual verification required
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

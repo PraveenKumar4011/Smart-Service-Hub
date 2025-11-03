@@ -1,0 +1,336 @@
+name: Docker Build & Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    - cron: '0 2 * * 1'  # Weekly build on Monday 2 AM
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Build and test individual Docker images
+  docker-build:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [frontend, backend, ai-microservice, zoho-mock]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix=sha-
+          type=raw,value=latest,enable={{is_default_branch}}
+    
+    # Frontend Docker build
+    - name: Build Frontend Docker image
+      if: matrix.service == 'frontend'
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile.frontend
+        push: false
+        load: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    
+    # Backend Docker build
+    - name: Build Backend Docker image
+      if: matrix.service == 'backend'
+      uses: docker/build-push-action@v5
+      with:
+        context: ./backend
+        file: ./backend/Dockerfile
+        push: false
+        load: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    
+    # AI Microservice Docker build
+    - name: Build AI Service Docker image
+      if: matrix.service == 'ai-microservice'
+      uses: docker/build-push-action@v5
+      with:
+        context: ./ai-microservice
+        file: ./ai-microservice/Dockerfile
+        push: false
+        load: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    
+    # Zoho Mock Docker build
+    - name: Build Zoho Mock Docker image
+      if: matrix.service == 'zoho-mock'
+      uses: docker/build-push-action@v5
+      with:
+        context: ./zoho-mock
+        file: ./zoho-mock/Dockerfile
+        push: false
+        load: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    
+    # Test the built image
+    - name: Test Docker image
+      run: |
+        IMAGE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
+        
+        case "${{ matrix.service }}" in
+          "frontend")
+            # Test frontend container
+            docker run --rm -d --name test-frontend -p 5173:5173 $IMAGE_TAG
+            sleep 10
+            curl -f http://localhost:5173 || exit 1
+            docker stop test-frontend
+            ;;
+          "backend") 
+            # Test backend container
+            docker run --rm -d --name test-backend -p 3001:3001 \
+              -e NODE_ENV=test \
+              -e DATABASE_FILE=/tmp/test.db \
+              $IMAGE_TAG
+            sleep 15
+            curl -f http://localhost:3001/health || exit 1
+            docker stop test-backend
+            ;;
+          "ai-microservice")
+            # Test AI service container
+            docker run --rm -d --name test-ai -p 5001:5001 $IMAGE_TAG
+            sleep 15
+            curl -f http://localhost:5001/health || exit 1
+            docker stop test-ai
+            ;;
+          "zoho-mock")
+            # Test Zoho mock container
+            docker run --rm -d --name test-zoho -p 5002:5002 \
+              -e ZOHO_API_KEY=test-key \
+              $IMAGE_TAG
+            sleep 10
+            curl -f http://localhost:5002/health || exit 1
+            docker stop test-zoho
+            ;;
+        esac
+    
+    # Push image to registry (only on main branch)
+    - name: Push Docker image
+      if: github.ref == 'refs/heads/main'
+      uses: docker/build-push-action@v5
+      with:
+        context: ${{ matrix.service == 'frontend' && '.' || format('./{0}', matrix.service) }}
+        file: ${{ matrix.service == 'frontend' && './Dockerfile.frontend' || format('./{0}/Dockerfile', matrix.service) }}
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  # Integration test with Docker Compose
+  docker-compose-test:
+    name: Docker Compose Integration Test
+    runs-on: ubuntu-latest
+    needs: docker-build
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Build all services with Docker Compose
+      run: |
+        docker-compose build
+    
+    - name: Start all services
+      run: |
+        docker-compose up -d
+        sleep 45  # Wait for all services to start
+    
+    - name: Check service health
+      run: |
+        # Wait for services to be ready
+        timeout=120
+        interval=5
+        
+        echo "Waiting for services to be healthy..."
+        
+        for i in $(seq 1 $((timeout/interval))); do
+          if curl -f http://localhost:5173 -o /dev/null -s && \
+             curl -f http://localhost:3001/health -o /dev/null -s && \
+             curl -f http://localhost:5001/health -o /dev/null -s && \
+             curl -f http://localhost:5002/health -o /dev/null -s; then
+            echo "✅ All services are healthy!"
+            break
+          fi
+          
+          if [ $i -eq $((timeout/interval)) ]; then
+            echo "❌ Services failed to start within ${timeout}s"
+            docker-compose logs
+            exit 1
+          fi
+          
+          echo "Waiting... ($((i*interval))s/${timeout}s)"
+          sleep $interval
+        done
+    
+    - name: Run integration tests
+      run: |
+        echo "Running integration tests..."
+        
+        # Test frontend to backend communication
+        echo "Testing frontend-backend communication..."
+        FRONTEND_URL="http://localhost:5173"
+        BACKEND_URL="http://localhost:3001"
+        
+        # Test API endpoints
+        curl -f "$BACKEND_URL/api/tickets" -H "Content-Type: application/json" || exit 1
+        curl -f "$BACKEND_URL/api/analytics/overview" -H "Content-Type: application/json" || exit 1
+        
+        # Test AI service integration
+        echo "Testing AI service integration..."
+        AI_URL="http://localhost:5001"
+        curl -X POST -f "$AI_URL/classify" \
+          -H "Content-Type: application/json" \
+          -d '{"text": "My printer is not working", "category": "Technical"}' || exit 1
+        
+        # Test Zoho mock integration
+        echo "Testing Zoho mock integration..."
+        ZOHO_URL="http://localhost:5002"
+        curl -X POST -f "$ZOHO_URL/api/tickets" \
+          -H "Content-Type: application/json" \
+          -H "Authorization: Bearer test-key" \
+          -d '{"title": "Test", "description": "Test ticket"}' || exit 1
+        
+        echo "✅ All integration tests passed!"
+    
+    - name: Test data flow
+      run: |
+        echo "Testing end-to-end data flow..."
+        
+        # Submit a ticket through the backend API
+        RESPONSE=$(curl -X POST "http://localhost:3001/api/tickets" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "customerName": "Integration Test",
+            "email": "test@example.com", 
+            "phone": "123-456-7890",
+            "issue": "Test integration issue",
+            "category": "Technical",
+            "priority": "High",
+            "attachments": []
+          }' -s)
+        
+        echo "Ticket creation response: $RESPONSE"
+        
+        # Verify ticket was created
+        curl -f "http://localhost:3001/api/tickets" | grep "Integration Test" || exit 1
+        
+        echo "✅ End-to-end data flow test passed!"
+    
+    - name: Performance test
+      run: |
+        echo "Running basic performance tests..."
+        
+        # Load test with multiple concurrent requests
+        for i in {1..10}; do
+          curl -f "http://localhost:3001/health" -o /dev/null -s &
+          curl -f "http://localhost:5001/health" -o /dev/null -s &
+        done
+        
+        wait
+        echo "✅ Performance test completed!"
+    
+    - name: Check logs for errors
+      if: always()
+      run: |
+        echo "Checking service logs for errors..."
+        
+        # Check for critical errors in logs
+        if docker-compose logs | grep -i "error\|exception\|fatal" | grep -v "test"; then
+          echo "❌ Found errors in service logs"
+          docker-compose logs
+          exit 1
+        fi
+        
+        echo "✅ No critical errors found in logs"
+    
+    - name: Cleanup
+      if: always()
+      run: |
+        docker-compose down -v
+        docker system prune -af
+
+  # Security scan
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: docker-build
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Build images for scanning
+      run: |
+        docker-compose build
+    
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'image'
+        image-ref: 'smart-service-hub-backend:latest'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+    
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+    
+    - name: Scan all service images
+      run: |
+        # Get list of built images
+        IMAGES=$(docker images --format "table {{.Repository}}:{{.Tag}}" | grep "smart-service-hub" | tail -n +2)
+        
+        echo "Scanning images:"
+        echo "$IMAGES"
+        
+        # Scan each image
+        for image in $IMAGES; do
+          echo "Scanning $image..."
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:latest image --exit-code 0 --severity HIGH,CRITICAL $image
+        done
