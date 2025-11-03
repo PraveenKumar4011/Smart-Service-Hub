@@ -25,6 +25,16 @@ app.use(helmet({
 }));
 
 // CORS configuration
+const allowedOrigins = [
+  'http://localhost:5173',  // Vite default dev server
+  'http://localhost:3000',  // Common React dev server
+  'http://localhost:4173',  // Vite preview server
+  'https://meticulous-cooperation-production-af7e.up.railway.app', // Railway frontend
+  'https://smart-service-hub.onrender.com', // Render backend (for internal calls)
+  /\.railway\.app$/,  // All Railway apps
+  /\.onrender\.com$/,  // All Render apps
+];
+
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (mobile apps, postman, etc.)
@@ -35,23 +45,29 @@ const corsOptions = {
       return callback(null, true);
     }
     
-    // In production, check against allowed origins
-    const allowedOrigins = [
-      'http://localhost:5173',  // Vite default dev server
-      'http://localhost:3000',  // Common React dev server
-      'http://localhost:4173',  // Vite preview server
-      'https://meticulous-cooperation-production-af7e.up.railway.app', // Railway frontend
-    ];
+    // Check if origin matches any allowed origin (including regex patterns)
+    const isAllowed = allowedOrigins.some(allowedOrigin => {
+      if (typeof allowedOrigin === 'string') {
+        return origin === allowedOrigin;
+      }
+      if (allowedOrigin instanceof RegExp) {
+        return allowedOrigin.test(origin);
+      }
+      return false;
+    });
     
-    if (allowedOrigins.includes(origin)) {
+    if (isAllowed) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      console.warn(`CORS blocked request from origin: ${origin}`);
+      callback(new Error(`Not allowed by CORS: ${origin}`));
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key']
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'X-Requested-With'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  maxAge: 86400 // 24 hours
 };
 
 app.use(cors(corsOptions));
