@@ -32,7 +32,7 @@ jobs:
       run: npm run lint
     
     - name: Run tests
-      run: npm test -- --coverage --watchAll=false
+      run: npm test -- --run
       env:
         CI: true
     
@@ -70,6 +70,7 @@ jobs:
       run: npm test
       env:
         NODE_ENV: test
+        NODE_OPTIONS: --experimental-vm-modules
     
     - name: Run backend linting
       working-directory: backend
