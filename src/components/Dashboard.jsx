@@ -66,13 +66,13 @@ export default function Dashboard({ refreshKey }) {
   return (
     <section id="dashboard" className="max-w-6xl mx-auto px-4 space-y-6">
       <div className="text-center mb-8">
-        <h2 className="text-2xl font-bold text-slate-800 mb-2">📋 Service Tickets Dashboard</h2>
+        <h2 className="text-2xl font-bold text-slate-800 mb-2">Service Tickets Dashboard</h2>
         <p className="text-slate-600">View and manage all service requests</p>
       </div>
       <div className="bg-white shadow-lg rounded-2xl p-6 border border-slate-200/50">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <input
-            placeholder="🔍 Search by name or description"
+            placeholder="Search by name or description"
             className="rounded-lg border-slate-300 px-4 py-3 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-colors"
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -96,7 +96,7 @@ export default function Dashboard({ refreshKey }) {
             ))}
           </select>
           <div className="text-sm text-slate-600 flex items-center font-semibold bg-slate-100 px-4 py-3 rounded-lg">
-            📊 {filtered.length} ticket(s)
+            {filtered.length} ticket(s)
           </div>
         </div>
       </div>

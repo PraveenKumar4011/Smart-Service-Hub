@@ -95,7 +95,7 @@ export default function TicketForm({ onCreated, showToast }) {
           <div>
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
               <p className="text-sm text-blue-800">
-                <span className="font-medium">🤖 AI Enhancement:</span> Priority will be automatically determined based on your description
+                <span className="font-medium">AI Enhancement:</span> Priority will be automatically determined based on your description
               </p>
             </div>
           </div>
@@ -118,7 +118,7 @@ export default function TicketForm({ onCreated, showToast }) {
               disabled={loading}
               className="inline-flex items-center rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 font-semibold hover:from-indigo-700 hover:to-purple-700 disabled:opacity-60 transition-all duration-200 shadow-md hover:shadow-lg"
             >
-              {loading ? "✨ Submitting..." : "🚀 Submit Ticket"}
+              {loading ? "Submitting..." : "Submit Ticket"}
             </button>
             <button
               type="button"
@@ -126,7 +126,7 @@ export default function TicketForm({ onCreated, showToast }) {
               className="inline-flex items-center rounded-lg border border-slate-300 text-slate-500 px-4 py-3 cursor-not-allowed bg-slate-50"
               title="Voice input coming soon"
             >
-              🎤 Record Audio (coming soon)
+              Record Audio (coming soon)
             </button>
           </div>
         </form>
